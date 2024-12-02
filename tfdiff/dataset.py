@@ -1,6 +1,5 @@
 import numpy as np
 import os
-import random
 import torch
 import torch.nn.functional as F
 import scipy.io as scio
@@ -15,7 +14,6 @@ from torch.utils.data.distributed import DistributedSampler
 # room_key='room',
 # rx_key='rx',
 # user_key='user',
-
 # receiver locations
 map_positions = {
     1: (0.5, -0.5),  
@@ -24,9 +22,17 @@ map_positions = {
     4: (-0.5, 0.5),
     5: (-0.5, 1.4),
     6: (0.0, 2.0),
+    7: (0.5, 0.0),
+    8: (1.4, 0.0),
+    9: (1.0, 0.5),
+    10: (1.0, 1.5),
+    11: (2.0, 1.0),
+    12: (2.0, 2.0),
 }
-tx_position = (0., 0.)  # 发射机位置
+tx_position = (0., 0.)  # transmitter location
 
+def calculate_distance(p1, p2):
+    return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
 def _nested_map(struct, map_fn):
     if isinstance(struct, tuple):
@@ -37,39 +43,6 @@ def _nested_map(struct, map_fn):
         return {k: _nested_map(v, map_fn) for k, v in struct.items()}
     return map_fn(struct)
 
-
-def calculate_distance(p1, p2):
-    return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-
-def augment_csi(feature, cond, prob_keep=0.5, gamma=2):
-    
-    receiver_id = cond[-2]
-    rx_position = map_positions[receiver_id]
-    d = calculate_distance(rx_position, tx_position)
-    
-    # keep with probability prob_keep
-    if random.random() < prob_keep:
-        # update cond
-        virtual_cond = cond.copy()
-        virtual_cond[-2] = d
-    else:
-        # generate virtual CSI
-        virtual_rx_position = (
-            random.uniform(-1, 2),
-            random.uniform(-1, 2),
-        )
-        d_prime = calculate_distance(virtual_rx_position, tx_position)
-        
-        # calculate amplitude
-        delta_p = 10 * gamma * np.log10(d / d_prime)
-        amplitude_ratio = np.sqrt(10**(delta_p / 10))
-        virtual_feature = amplitude_ratio * feature
-        
-        # update cond
-        virtual_cond = cond.copy()
-        virtual_cond[-2] = d_prime
-        
-    return virtual_feature, virtual_cond
 
 class WiFiDataset(torch.utils.data.Dataset):
     def __init__(self, paths):
@@ -86,10 +59,11 @@ class WiFiDataset(torch.utils.data.Dataset):
         cur_sample = scio.loadmat(cur_filename,verify_compressed_data_integrity=False)
         # cur_data = torch.from_numpy(cur_sample['csi_data']).to(torch.complex64)
         cur_data = torch.from_numpy(cur_sample['feature']).to(torch.complex64)
-        cur_cond = torch.from_numpy(cur_sample['cond']).to(torch.complex64)
+        cur_cond = torch.from_numpy(cur_sample['cond']).to(torch.complex64).squeeze(0)
+        cur_cond[-2] = calculate_distance(map_positions[int(cur_cond[-2])], tx_position)
         return {
             'data': cur_data,
-            'cond': cur_cond.squeeze(0)
+            'cond': cur_cond
         }
 
 
@@ -111,6 +85,8 @@ class Collator:
                 data = torch.view_as_real(record['data']).permute(1, 2, 0)
                 down_sample = F.interpolate(data, sample_rate, mode='nearest-exact')
                 norm_data = (down_sample - down_sample.mean()) / down_sample.std()
+                # norm_data = (norm_data - norm_data.min()) / (norm_data.max() - norm_data.min())
+                # norm_data = down_sample
                 record['data'] = norm_data.permute(2, 0, 1)
             data = torch.stack([record['data'] for record in minibatch if 'data' in record])
             cond = torch.stack([record['cond'] for record in minibatch if 'cond' in record])

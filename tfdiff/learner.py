@@ -102,11 +102,9 @@ class tfdiffLearner:
         device = next(self.model.parameters()).device
         # self.prof.start()
         while True:  # epoch
-            # if isinstance(self.dataset.sampler, torch.utils.data.distributed.DistributedSampler):
-            #     self.dataset.sampler.set_epoch(self.iter // len(self.dataset))
+            if isinstance(self.dataset.sampler, torch.utils.data.distributed.DistributedSampler):
+                self.dataset.sampler.set_epoch(self.iter // len(self.dataset))
             for features in tqdm(self.dataset, desc=f'Epoch {self.iter // len(self.dataset)}') if self.is_master else self.dataset:
-                # if not features:    # skip empty features batch
-                #     continue
                 if max_iter is not None and self.iter >= max_iter:
                     # self.prof.stop()
                     return

@@ -21,11 +21,11 @@ class AttrDict(dict):
 # ========================
 params_wifi = AttrDict(
     task_id=0,
-    log_dir='./log/widar/dia-1128',
-    model_dir='./model/widar/dia-b32-256-100s-1128',
-    data_dir=['/data/Widar3.0/20181128/*'],
+    log_dir='./log/1208/dia-dis-aug',
+    model_dir='./model/1208/dia-b32-256-100s-dis-aug',
+    data_dir=['/data/Widar3.0/20181208/*', '/data/Widar3.0_aug/20181208/*'],
     out_dir='./dataset/widar/output',
-    cond_dir=['./dataset/widar/cond1128'],
+    cond_dir=['./dataset/widar/cond1208'],
     fid_pred_dir = './dataset/widar/img_matric/pred',
     fid_data_dir = './dataset/widar/img_matric/data',
     # Training params
@@ -53,6 +53,9 @@ params_wifi = AttrDict(
     dropout=0.,
     mlp_ratio=4,
     learn_tfdiff=False,
+    # rescale params
+    prob_keep = 0.5,
+    gamma = 2,
     # Diffusion params
     signal_diffusion=True,
     max_step=100,
