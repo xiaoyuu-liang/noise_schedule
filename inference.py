@@ -29,6 +29,40 @@ def gaussian(window_size: int, tfdiff: float):
     gaussian = torch.tensor([math.exp(-(x - window_size//2)**2/float(2*tfdiff**2)) for x in range(window_size)])
     return gaussian / gaussian.sum()
 
+def cal_SNR(predict, truth):
+    if torch.is_tensor(predict):
+        predict = predict.detach().cpu().numpy().squeeze(0)
+    if torch.is_tensor(truth):
+        truth = truth.detach().cpu().numpy().squeeze(0)
+    # Recombine the real and imaginary parts to form complex values
+    PS = np.sum(np.abs(truth)**2, axis=(-1, -2))  # power of signal
+    PN = np.sum(np.abs(predict - truth)**2, axis=(-1, -2))  # power of noise
+    ratio = PS / PN
+    return 10 * np.log10(ratio)
+
+def eval_tf_ssim(data, pred, device):
+    n_fft = 64
+    hop_length = 2
+
+    data = data.squeeze(0)
+    pred = pred.squeeze(0)
+    # Calculate STFT SSIM for each antenna
+    ssim_list = []
+    for i in range(data.shape[1]):
+        antenna_data = data[:, i]
+        antenna_pred = pred[:, i]
+
+        data_spec = torch.stft(antenna_data, n_fft=n_fft, hop_length=hop_length, return_complex=True)
+        pred_spec = torch.stft(antenna_pred, n_fft=n_fft, hop_length=hop_length, return_complex=True)
+        data_spec = data_spec.unsqueeze(0).to(torch.complex64).to(device)
+        pred_spec = pred_spec.unsqueeze(0).to(torch.complex64).to(device)
+
+        data_spec_norm = (data_spec - data_spec.mean()) / data_spec.std()
+        pred_spec_norm = (pred_spec - pred_spec.mean()) / pred_spec.std()
+        ssim = eval_ssim(data_spec_norm, pred_spec_norm, data_spec_norm.shape[0], data_spec_norm.shape[1], device)
+        ssim_list.append(ssim.cpu().detach().numpy())
+    
+    return np.mean(ssim_list)
 
 @torch.jit.script
 def create_window(height: int, width: int):
@@ -52,8 +86,8 @@ def eval_ssim(pred, data, height, width, device):
     tfdiff_pred_data = torch.nn.functional.conv2d(pred*data, window, padding=padding, groups=1) - mu_pred_data
     C1 = 0.01**2
     C2 = 0.03**2
-    ssim_map = ((2*mu_pred*mu_data+C1) * (2*tfdiff_pred_data.real+C2)) / ((mu_pred_pow+mu_data_pow+C1)*(tfdiff_pred+tfdiff_data+C2))
-    return 2*ssim_map.mean().real
+    ssim_map = ((2*mu_pred*mu_data+C1) * (2*tfdiff_pred_data+C2)) / ((mu_pred_pow+mu_data_pow+C1)*(tfdiff_pred+tfdiff_data+C2))
+    return ssim_map.mean().real
 
 def save(out_dir, data, cond, batch, index=0):
     os.makedirs(out_dir, exist_ok=True)
@@ -77,8 +111,8 @@ def save_wifi(out_dir, data, pred, cond, batch, index=0):
     data = data[0, :, 0].reshape(64) # sample_rate
     pred = pred[0, :, 0].reshape(64)
     # Compute the STFT for data and pred
-    n_fft = 24  # Choose an appropriate value for your data
-    hop_length = 7  # Choose an appropriate value for your data
+    n_fft = 32  # Choose an appropriate value for your data
+    hop_length = 2  # Choose an appropriate value for your data
     data_spec = torch.stft(data, n_fft=n_fft, hop_length=hop_length)
     pred_spec = torch.stft(pred, n_fft=n_fft, hop_length=hop_length)
     # Convert the complex spectrograms to magnitude spectrograms
@@ -146,8 +180,8 @@ def main(args):
     device = torch.device(
         'cpu') if args.device == 'cpu' else torch.device('cuda')
     # Lazy load model.
-    if os.path.exists(f'{model_dir}/weights.pt'):
-        checkpoint = torch.load(f'{model_dir}/weights.pt')
+    if os.path.exists(f'{model_dir}/weights-10.pt'):
+        checkpoint = torch.load(f'{model_dir}/weights-10.pt')
     else:
         checkpoint = torch.load(model_dir)
     if args.task_id==0:
@@ -166,6 +200,7 @@ def main(args):
     with torch.no_grad():
         cur_batch = 0
         ssim_list = []
+        spec_ssim_list = []
         snr_list = []
       
         for features in tqdm(dataset, desc=f'Epoch {cur_batch // len(dataset)}'):
@@ -182,15 +217,31 @@ def main(args):
                 data_samples = [torch.view_as_complex(sample) for sample in torch.split(data, 1, dim=0)] # [B, [1, N, S]]
                 pred_samples = [torch.view_as_complex(sample) for sample in torch.split(pred, 1, dim=0)] # [B, [1, N, S]]
                 cond_samples = [torch.view_as_complex(sample) for sample in torch.split(cond, 1, dim=0)] # [B, [1, N, S]]
+                data_mean = features['mean']
+                data_std = features['std']
+                data_min = features['min']
+                data_max = features['max']
                 for b, p_sample in enumerate(pred_samples):
                     d_sample = data_samples[b]
+                    # p_sample = (p_sample - p_sample.mean()) / p_sample.std()
+                    # d_sample = (d_sample - d_sample.mean()) / d_sample.std()
+                    # d_sample = d_sample * (data_max[b] - data_min[b]) + data_min[b]
+                    # p_sample = p_sample * (data_max[b] - data_min[b]) + data_min[b]
+                    # d_sample = d_sample * data_std[b] + data_mean[b]
+                    # p_sample = p_sample * data_std[b] + data_mean[b]
                     cur_ssim = eval_ssim(p_sample, d_sample, params.sample_rate, params.input_dim, device=device)
                     # Save the SSIM.
                     ssim_list.append(cur_ssim.item())
+                    cur_snr = cal_SNR(p_sample, d_sample)
+                    snr_list.append(cur_snr)
+                    cur_spec_ssim = eval_tf_ssim(p_sample, d_sample, device)
+                    spec_ssim_list.append(cur_spec_ssim)
                     save_wifi(out_dir, d_sample.cpu().detach(), p_sample.cpu().detach(), cond_samples[b].cpu().detach(), cur_batch,b)
                 cur_batch += 1
         print_fid(fid_pred_dir,fid_data_dir,args.task_id)
         print(f'Average SSIM: {np.mean(ssim_list)}')
+        print(f'Average SNR: {np.mean(snr_list)}')
+        print(f'Average Spec SSIM: {np.mean(spec_ssim_list)}')
 
 
 

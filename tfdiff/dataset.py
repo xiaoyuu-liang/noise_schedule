@@ -34,6 +34,26 @@ tx_position = (0., 0.)  # transmitter location
 def calculate_distance(p1, p2):
     return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
+def augment_csi(ref_data, cond, gamma=2):
+
+    receiver_id = int(cond[-2])
+    rx_position = map_positions[receiver_id]
+    d = calculate_distance(rx_position, tx_position)
+    
+    # generate virtual CSI
+    x = np.random.uniform(-1, 2)
+    y = np.random.uniform(-1, 2)
+    d_prime = calculate_distance((x, y), tx_position)
+
+    scale = (d / d_prime) ** gamma
+    data = ref_data * scale
+    
+    new_cond = cond
+    new_cond[-2] = d_prime
+    
+    return data, new_cond
+
+
 def _nested_map(struct, map_fn):
     if isinstance(struct, tuple):
         return tuple(_nested_map(x, map_fn) for x in struct)
@@ -60,7 +80,7 @@ class WiFiDataset(torch.utils.data.Dataset):
         # cur_data = torch.from_numpy(cur_sample['csi_data']).to(torch.complex64)
         cur_data = torch.from_numpy(cur_sample['feature']).to(torch.complex64)
         cur_cond = torch.from_numpy(cur_sample['cond']).to(torch.complex64).squeeze(0)
-        cur_cond[-2] = calculate_distance(map_positions[int(cur_cond[-2])], tx_position)
+        # cur_cond[-2] = calculate_distance(map_positions[int(cur_cond[-2])], tx_position)
         return {
             'data': cur_data,
             'cond': cur_cond
@@ -76,6 +96,7 @@ class Collator:
         task_id = self.params.task_id
         ## WiFi Case
         if task_id == 0:
+            stats = {'min': [], 'max': [], 'mean': [], 'std': []}
             for record in minibatch:
                 # Filter out records that aren't long enough.
                 if len(record['data']) < sample_rate:
@@ -84,15 +105,29 @@ class Collator:
                     continue
                 data = torch.view_as_real(record['data']).permute(1, 2, 0)
                 down_sample = F.interpolate(data, sample_rate, mode='nearest-exact')
-                norm_data = (down_sample - down_sample.mean()) / down_sample.std()
-                # norm_data = (norm_data - norm_data.min()) / (norm_data.max() - norm_data.min())
+                down_sample, new_cond = augment_csi(ref_data=down_sample, cond=record['cond'], gamma=2)
+                # norm_data = (down_sample - down_sample.mean()) / down_sample.std()
+                # norm_data = (down_sample - down_sample.min()) / (down_sample.max() - down_sample.min())
+                norm_data = -2 + 4*(down_sample - down_sample.min()) / (down_sample.max() - down_sample.min())
                 # norm_data = down_sample
+
+                # statistics
+                stats['min'].append(down_sample.min())
+                stats['max'].append(down_sample.max())
+                stats['mean'].append(down_sample.mean())
+                stats['std'].append(down_sample.std())
+
                 record['data'] = norm_data.permute(2, 0, 1)
+                record['cond'] = new_cond
             data = torch.stack([record['data'] for record in minibatch if 'data' in record])
             cond = torch.stack([record['cond'] for record in minibatch if 'cond' in record])
             return {
                 'data': data,
                 'cond': torch.view_as_real(cond),
+                'min': torch.stack(stats['min']),
+                'max': torch.stack(stats['max']),
+                'mean': torch.stack(stats['mean']),
+                'std': torch.stack(stats['std'])
             }
         else:
             raise ValueError("Unexpected task_id.")

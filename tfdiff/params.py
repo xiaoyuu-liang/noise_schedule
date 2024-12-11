@@ -21,16 +21,16 @@ class AttrDict(dict):
 # ========================
 params_wifi = AttrDict(
     task_id=0,
-    log_dir='./log/1208/dia-dis-aug',
-    model_dir='./model/1208/dia-b32-256-100s-dis-aug',
-    data_dir=['/data/Widar3.0/20181208/*', '/data/Widar3.0_aug/20181208/*'],
+    log_dir='./log/widar/dia-dis-online-aug',
+    model_dir='./model/widar/dia-b32-256-100s-dis-online-aug',
+    data_dir=['/data/Widar3.0/2018*/*'],
     out_dir='./dataset/widar/output',
-    cond_dir=['./dataset/widar/cond1208'],
+    cond_dir=['./dataset/widar/cond'],
     fid_pred_dir = './dataset/widar/img_matric/pred',
     fid_data_dir = './dataset/widar/img_matric/data',
     # Training params
     max_iter=None, # Unlimited number of iterations.
-    batch_size=64,
+    batch_size=128,
     learning_rate=1e-3,
     max_grad_norm=None,
     # Inference params
