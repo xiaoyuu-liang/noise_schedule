@@ -21,16 +21,16 @@ class AttrDict(dict):
 # ========================
 params_wifi = AttrDict(
     task_id=0,
-    log_dir='./log/widar/dia-dis-online-aug',
-    model_dir='./model/widar/dia-b32-256-100s-dis-online-aug',
-    data_dir=['/data/Widar3.0/2018*/*'],
+    log_dir='./log/1128/minmax1-cos-asc.5',
+    model_dir='./model/1128/minmax1-cos-asc.5',
+    data_dir=['/data/Widar3.0/20181128/*'],
     out_dir='./dataset/widar/output',
-    cond_dir=['./dataset/widar/cond'],
+    cond_dir=['./dataset/widar/cond1128'],
     fid_pred_dir = './dataset/widar/img_matric/pred',
     fid_data_dir = './dataset/widar/img_matric/data',
     # Training params
     max_iter=None, # Unlimited number of iterations.
-    batch_size=128,
+    batch_size=64,
     learning_rate=1e-3,
     max_grad_norm=None,
     # Inference params
@@ -62,8 +62,9 @@ params_wifi = AttrDict(
     # variance of the guassian blur applied on the spectrogram on each diffusion step [T]
     blur_schedule=((1e-5**2) * np.ones(100)).tolist(),
     # \beta_t, noise level added to the signal on each diffusion step [T]
-    # noise_schedule=np.linspace(1e-4, 0.003, 100).tolist(),
-    noise_schedule = (1e-3 * (1 + np.cos(np.linspace(0, np.pi, 100)))).tolist() # cosine schedule
+    noise_schedule=np.linspace(1e-4, 0.003, 100).tolist(),
+    # noise_schedule=(0.5 * (1 - np.cos(np.pi * np.linspace(0, 99, 100) / (100-1))) * (0.003 - 1e-4) + 1e-4).tolist() # cosine schedule
+    # noise_schedule=(2e-3 * (1 + np.cos(np.linspace(0, np.pi, 100)))).tolist()
 )
 
 all_params = [params_wifi]

@@ -43,8 +43,15 @@ class SignalDiffusion(nn.Module):
             rev_var_blur_bar = torch.cumsum(rev_var_blur, dim=0) - rev_var_blur[-1] # [t]
             rev_var_kernel_bar = (self.input_dim / rev_var_blur_bar).unsqueeze(1) # [t, 1]
             rev_kernel_bar = self.get_kernel(rev_var_kernel_bar) # \bar{G_t} / \bar{G_s}, for s in [t, 1], [t, N]
-            rev_kernel_bar[0, :] = torch.ones(self.input_dim) 
+            rev_kernel_bar[0, :] = torch.ones(self.input_dim)
             noise_weights.append(torch.mv((rev_alpha_bar_sqrt.unsqueeze(-1) * rev_kernel_bar).transpose(0, 1), rev_one_minus_alpha_sqrt)) # [t, N]
+            # print(f"t: {t}, info_weight: {self.info_weights[t][0]}, noise_weight: {noise_weights[t][0]}")
+        import matplotlib.pyplot as plt
+        print(torch.stack(noise_weights, dim=0).mean(dim=1).shape)
+        plt.plot(torch.stack(noise_weights, dim=0).mean(dim=1).detach().cpu().numpy(), label=f"noise weight")
+        plt.legend()
+        plt.savefig("lin3e-3.png")
+        plt.show()
         return torch.stack(noise_weights, dim=0) # [T, N] 
 
     def get_noise_weights_stats(self):
@@ -91,6 +98,7 @@ class SignalDiffusion(nn.Module):
         torch.manual_seed(11)
         noise =  noise_weight * torch.randn_like(x_0, dtype=torch.float32, device=device) # [B, N, S, A, 2]
         x_t = info_weight * x_0 + noise # [B, N, S, A, 2]
+        # print(f"info_weight: {info_weight[0][0]}, noise_weight: {noise_weight[0][0]}")
         return x_t
 
 
@@ -167,6 +175,7 @@ class SignalDiffusion(nn.Module):
         x_s = self.degrade_fn(data, batch_max, task_id = self.task_id).to(device)
         # Restore data from noise.
         x_0_hat = restore_fn(x_s, batch_max, cond)
+        # x_0_hat = x_s
         return x_0_hat
 
 

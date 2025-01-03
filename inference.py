@@ -180,8 +180,8 @@ def main(args):
     device = torch.device(
         'cpu') if args.device == 'cpu' else torch.device('cuda')
     # Lazy load model.
-    if os.path.exists(f'{model_dir}/weights-10.pt'):
-        checkpoint = torch.load(f'{model_dir}/weights-10.pt')
+    if os.path.exists(f'{model_dir}/weights.pt'):
+        checkpoint = torch.load(f'{model_dir}/weights.pt')
     else:
         checkpoint = torch.load(model_dir)
     if args.task_id==0:

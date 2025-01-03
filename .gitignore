@@ -22,6 +22,7 @@ Thumbs.db
 # data files
 /dataset/*/
 /figs/
+*.png
 
 # running files
 /.hydra/

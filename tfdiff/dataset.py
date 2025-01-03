@@ -22,12 +22,6 @@ map_positions = {
     4: (-0.5, 0.5),
     5: (-0.5, 1.4),
     6: (0.0, 2.0),
-    7: (0.5, 0.0),
-    8: (1.4, 0.0),
-    9: (1.0, 0.5),
-    10: (1.0, 1.5),
-    11: (2.0, 1.0),
-    12: (2.0, 2.0),
 }
 tx_position = (0., 0.)  # transmitter location
 
@@ -108,7 +102,7 @@ class Collator:
                 down_sample, new_cond = augment_csi(ref_data=down_sample, cond=record['cond'], gamma=2)
                 # norm_data = (down_sample - down_sample.mean()) / down_sample.std()
                 # norm_data = (down_sample - down_sample.min()) / (down_sample.max() - down_sample.min())
-                norm_data = -2 + 4*(down_sample - down_sample.min()) / (down_sample.max() - down_sample.min())
+                norm_data = -1 + 2*(down_sample - down_sample.min()) / (down_sample.max() - down_sample.min())
                 # norm_data = down_sample
 
                 # statistics
