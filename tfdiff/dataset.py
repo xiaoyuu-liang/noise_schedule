@@ -3,6 +3,8 @@ import os
 import torch
 import torch.nn.functional as F
 import scipy.io as scio
+import torch.utils
+import torch.utils.data
 from tfdiff.params import AttrDict
 from glob import glob
 from torch.utils.data.distributed import DistributedSampler
@@ -39,7 +41,7 @@ def augment_csi(ref_data, cond, gamma=2):
     y = np.random.uniform(-1, 2)
     d_prime = calculate_distance((x, y), tx_position)
 
-    scale = (d / d_prime) ** gamma
+    scale = (d / d_prime) ** (gamma/2)
     data = ref_data * scale
     
     new_cond = cond
@@ -63,7 +65,7 @@ class WiFiDataset(torch.utils.data.Dataset):
         super().__init__()
         self.filenames = []
         for path in paths:
-            self.filenames += glob(f'{path}/**/user*.mat', recursive=True)
+            self.filenames += glob(f'{path}/**/user*-*-*-*-*-r*.mat', recursive=True)
 
     def __len__(self):
         return len(self.filenames)
@@ -99,10 +101,10 @@ class Collator:
                     continue
                 data = torch.view_as_real(record['data']).permute(1, 2, 0)
                 down_sample = F.interpolate(data, sample_rate, mode='nearest-exact')
-                down_sample, new_cond = augment_csi(ref_data=down_sample, cond=record['cond'], gamma=2)
-                # norm_data = (down_sample - down_sample.mean()) / down_sample.std()
+                # down_sample, new_cond = augment_csi(ref_data=down_sample, cond=record['cond'], gamma=2)
+                norm_data = (down_sample - down_sample.mean()) / down_sample.std()
                 # norm_data = (down_sample - down_sample.min()) / (down_sample.max() - down_sample.min())
-                norm_data = -1 + 2*(down_sample - down_sample.min()) / (down_sample.max() - down_sample.min())
+                # norm_data = -2 + 4*(down_sample - down_sample.min()) / (down_sample.max() - down_sample.min())
                 # norm_data = down_sample
 
                 # statistics
@@ -111,8 +113,9 @@ class Collator:
                 stats['mean'].append(down_sample.mean())
                 stats['std'].append(down_sample.std())
 
-                record['data'] = norm_data.permute(2, 0, 1)
-                record['cond'] = new_cond
+                record['data'] = norm_data.permute(2, 0, 1) 
+                record['cond'] = record['cond'][-2].unsqueeze(0)           # rx_id
+                # record['cond'] = new_cond
             data = torch.stack([record['data'] for record in minibatch if 'data' in record])
             cond = torch.stack([record['cond'] for record in minibatch if 'cond' in record])
             return {
@@ -151,6 +154,9 @@ def from_path_inference(params):
     task_id = params.task_id
     if task_id == 0:
         dataset = WiFiDataset(cond_dir)
+        # num_samples = 500
+        # indices = np.random.choice(len(dataset), num_samples, replace=False)
+        # subset = torch.utils.data.Subset(dataset, indices)
     else:
         raise ValueError("Unexpected task_id.")
     return torch.utils.data.DataLoader(

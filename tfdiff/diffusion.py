@@ -3,6 +3,17 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+map_positions = {
+    1: (0.5, -0.5),  
+    2: (1.4, -0.5), 
+    3: (2.0, 0.0), 
+    4: (-0.5, 0.5),
+    5: (-0.5, 1.4),
+    6: (0.0, 2.0),
+}
+tx_position = (0., 0.)  # transmitter location
+
+
 class SignalDiffusion(nn.Module):
     def __init__(self, params):
         super().__init__()
@@ -46,12 +57,12 @@ class SignalDiffusion(nn.Module):
             rev_kernel_bar[0, :] = torch.ones(self.input_dim)
             noise_weights.append(torch.mv((rev_alpha_bar_sqrt.unsqueeze(-1) * rev_kernel_bar).transpose(0, 1), rev_one_minus_alpha_sqrt)) # [t, N]
             # print(f"t: {t}, info_weight: {self.info_weights[t][0]}, noise_weight: {noise_weights[t][0]}")
-        import matplotlib.pyplot as plt
-        print(torch.stack(noise_weights, dim=0).mean(dim=1).shape)
-        plt.plot(torch.stack(noise_weights, dim=0).mean(dim=1).detach().cpu().numpy(), label=f"noise weight")
-        plt.legend()
-        plt.savefig("lin3e-3.png")
-        plt.show()
+        # import matplotlib.pyplot as plt
+        # print(torch.stack(noise_weights, dim=0).mean(dim=1).shape)
+        # plt.plot(torch.stack(noise_weights, dim=0).mean(dim=1).detach().cpu().numpy(), label=f"noise weight")
+        # plt.legend()
+        # plt.savefig("cos-beta3e-2.png")
+        # plt.show()
         return torch.stack(noise_weights, dim=0) # [T, N] 
 
     def get_noise_weights_stats(self):
@@ -84,10 +95,32 @@ class SignalDiffusion(nn.Module):
             rev_kernel = torch.flipud(self.gaussian_kernel[:upper_bound, :]) # G_s, for s in [t, 1], [t, N]
             rev_kernel_bar = torch.cumprod(rev_kernel, dim=0) / rev_kernel[-1, :] # \bar{G_t} / \bar{G_s}, for s in [t, 1], [t, N]
             noise_weights.append(torch.mv((rev_alpha_bar_sqrt.unsqueeze(-1) * rev_kernel_bar).transpose(0, 1), rev_one_minus_alpha_sqrt)) # [t, N]
-        return torch.stack(noise_weights, dim=0) # [T, N] 
+        return torch.stack(noise_weights, dim=0) # [T, N]
+    
+    def get_distance_noise(self, cond, gamma=2):
+        B = cond.shape[0]
 
-    def degrade_fn(self, x_0, t, task_id):
+        rx = cond[:, 0, 0].tolist()
+        positions = torch.tensor([map_positions[r] for r in rx])
+        d = torch.sqrt((positions**2).sum(dim=1))
+        # sample distance
+        sampled_coords = torch.rand(B, 2) * 3 - 1  # sample in [-1, 2][-1, 2]
+        d_prime = torch.sqrt((sampled_coords**2).sum(dim=1))
+        # distance noise
+        mu_d = (d / d_prime) ** (gamma/2)
+        return mu_d, d_prime
+
+    def degrade_fn(self, x_0, c, t, task_id):
         device = x_0.device
+        # mu_d, d = self.get_distance_noise(c, gamma=2)
+        # mu_d = mu_d.view(-1, 1, 1, 1).to(device)
+        
+        # x_0 = x_0 * mu_d
+        # c = torch.view_as_real(d.to(torch.complex64).to(device)).unsqueeze(1)
+        rx = c[:, 0, 0].tolist()
+        positions = torch.tensor([map_positions[r] for r in rx])
+        d = torch.sqrt((positions**2).sum(dim=1))
+        c = torch.view_as_real(d.to(torch.complex64).to(device)).unsqueeze(1)
         if task_id in [0, 1]:
             noise_weight = self.noise_weights[t, :].unsqueeze(-1).unsqueeze(-1).to(device) # equivalent gaussian noise weights, [B, N, 1, 1, 1]
             info_weight = self.info_weights[t, :].unsqueeze(-1).unsqueeze(-1).to(device) # equivalent original info weights, [B, N, 1, 1, 1]
@@ -99,7 +132,27 @@ class SignalDiffusion(nn.Module):
         noise =  noise_weight * torch.randn_like(x_0, dtype=torch.float32, device=device) # [B, N, S, A, 2]
         x_t = info_weight * x_0 + noise # [B, N, S, A, 2]
         # print(f"info_weight: {info_weight[0][0]}, noise_weight: {noise_weight[0][0]}")
-        return x_t
+        return x_t, c
+    
+    def sampling_degrade_fn(self, x_0, c, t, task_id):
+        device = x_0.device
+        rx = c[:, 0, 0].tolist()
+        positions = torch.tensor([map_positions[r] for r in rx])
+        d = torch.sqrt((positions**2).sum(dim=1))
+        c = torch.view_as_real(d.to(torch.complex64).to(device)).unsqueeze(1)
+
+        if task_id in [0, 1]:
+            noise_weight = self.noise_weights[t, :].unsqueeze(-1).unsqueeze(-1).to(device) # equivalent gaussian noise weights, [B, N, 1, 1, 1]
+            info_weight = self.info_weights[t, :].unsqueeze(-1).unsqueeze(-1).to(device) # equivalent original info weights, [B, N, 1, 1, 1]
+        if task_id in [2, 3]:
+            noise_weight = self.noise_weights[t, :].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(device) # equivalent gaussian noise weights, [B, N, 1, 1, 1]
+            info_weight = self.info_weights[t, :].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(device) # equivalent original info weights, [B, N, 1, 1, 1]
+        # random seed
+        torch.manual_seed(11)
+        noise =  noise_weight * torch.randn_like(x_0, dtype=torch.float32, device=device) # [B, N, S, A, 2]
+        x_t = info_weight * x_0 + noise # [B, N, S, A, 2]
+        # print(f"info_weight: {info_weight[0][0]}, noise_weight: {noise_weight[0][0]}")
+        return x_t, c
 
 
     def sampling(self, restore_fn, cond, device):
@@ -172,7 +225,9 @@ class SignalDiffusion(nn.Module):
         batch_size = cond.shape[0]
         batch_max = (self.max_step-1)*torch.ones(batch_size, dtype=torch.int64)
         # Generate degraded noise.
-        x_s = self.degrade_fn(data, batch_max, task_id = self.task_id).to(device)
+        x_s, cond = self.sampling_degrade_fn(data, cond, batch_max, task_id = self.task_id)
+        x_s = x_s.to(device)
+        cond = cond.to(device)
         # Restore data from noise.
         x_0_hat = restore_fn(x_s, batch_max, cond)
         # x_0_hat = x_s

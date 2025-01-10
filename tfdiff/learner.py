@@ -130,8 +130,8 @@ class tfdiffLearner:
         B = data.shape[0]
         # random diffusion step, [B]
         t = torch.randint(0, self.diffusion.max_step, [B], dtype=torch.int64)
-        degrade_data = self.diffusion.degrade_fn(
-            data, t ,self.task_id)  # degrade data, x_t, [B, N, S*A, 2]
+        degrade_data, cond = self.diffusion.degrade_fn(
+            data, cond, t , self.task_id)  # degrade data, x_t, [B, N, S*A, 2]
         predicted = self.model(degrade_data, t, cond)
         if self.task_id==3:
             data = data.reshape(-1,512,1,2)

@@ -208,7 +208,8 @@ def main(args):
                 device) if isinstance(x, torch.Tensor) else x)
             data = features['data']
             cond = features['cond']
-            
+            if data.numel() == 0 or cond.numel() == 0:
+                continue
             if args.task_id in [0]:
                 # pred = diffusion.sampling(model, cond, device)
                 # pred = diffusion.robust_sampling(model, cond, device)
@@ -217,30 +218,20 @@ def main(args):
                 data_samples = [torch.view_as_complex(sample) for sample in torch.split(data, 1, dim=0)] # [B, [1, N, S]]
                 pred_samples = [torch.view_as_complex(sample) for sample in torch.split(pred, 1, dim=0)] # [B, [1, N, S]]
                 cond_samples = [torch.view_as_complex(sample) for sample in torch.split(cond, 1, dim=0)] # [B, [1, N, S]]
-                data_mean = features['mean']
-                data_std = features['std']
-                data_min = features['min']
-                data_max = features['max']
                 for b, p_sample in enumerate(pred_samples):
                     d_sample = data_samples[b]
-                    # p_sample = (p_sample - p_sample.mean()) / p_sample.std()
-                    # d_sample = (d_sample - d_sample.mean()) / d_sample.std()
-                    # d_sample = d_sample * (data_max[b] - data_min[b]) + data_min[b]
-                    # p_sample = p_sample * (data_max[b] - data_min[b]) + data_min[b]
-                    # d_sample = d_sample * data_std[b] + data_mean[b]
-                    # p_sample = p_sample * data_std[b] + data_mean[b]
                     cur_ssim = eval_ssim(p_sample, d_sample, params.sample_rate, params.input_dim, device=device)
                     # Save the SSIM.
                     ssim_list.append(cur_ssim.item())
-                    cur_snr = cal_SNR(p_sample, d_sample)
-                    snr_list.append(cur_snr)
+                    # cur_snr = cal_SNR(p_sample, d_sample)
+                    # snr_list.append(cur_snr)
                     cur_spec_ssim = eval_tf_ssim(p_sample, d_sample, device)
                     spec_ssim_list.append(cur_spec_ssim)
                     save_wifi(out_dir, d_sample.cpu().detach(), p_sample.cpu().detach(), cond_samples[b].cpu().detach(), cur_batch,b)
                 cur_batch += 1
         print_fid(fid_pred_dir,fid_data_dir,args.task_id)
         print(f'Average SSIM: {np.mean(ssim_list)}')
-        print(f'Average SNR: {np.mean(snr_list)}')
+        # print(f'Average SNR: {np.mean(snr_list)}')
         print(f'Average Spec SSIM: {np.mean(spec_ssim_list)}')
 
 
