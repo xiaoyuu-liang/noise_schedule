@@ -21,8 +21,8 @@ class AttrDict(dict):
 # ========================
 params_wifi = AttrDict(
     task_id=0,
-    log_dir='./log/1128/all-scos-2e4-T100',
-    model_dir='./model/1128/all-scos-2e4-T100',
+    log_dir='./log/1128/all-scos2',
+    model_dir='./model/1128/all-scos2',
     data_dir=['/data/Widar3.0/20181128-all/'],
     out_dir='./dataset/widar/output',
     cond_dir=['/data/Widar3.0/cond1128-all/'],
@@ -62,7 +62,11 @@ params_wifi = AttrDict(
     # linear schedule
     # noise_schedule=np.linspace(1e-4, 0.003, 100).tolist(),    
     # simple cosine schedule
-    noise_schedule=(2e-4 * (1 + np.cos(np.linspace(0, np.pi, 100)))).tolist()
+    noise_schedule=(1e-3 * (2 + 2*np.cos(np.linspace(0, np.pi, 100)))).tolist()
+    # power schedule
+    # noise_schedule=(2.5e-3 * (1-np.linspace(0, 1, 100)**2)).tolist(),
+    # tanh schedule
+    # noise_schedule=(2e-3 * (1 + np.tanh(-np.linspace(0, 4, 100) + 2))).tolist(),
     # standard cosine schedule
     # noise_schedule=(3e-2 * np.clip(1 - (np.cos(0.5 * np.pi * ((np.arange(1, 100+1)/(100))+0.008)/(1+0.008)) ** 2) / (np.cos(0.5 * np.pi * ((np.arange(0, 100)/(100))+0.008)/(1+0.008)) ** 2), 0, 0.999)).tolist()
 )

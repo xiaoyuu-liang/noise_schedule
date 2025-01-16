@@ -57,12 +57,20 @@ class SignalDiffusion(nn.Module):
             rev_kernel_bar[0, :] = torch.ones(self.input_dim)
             noise_weights.append(torch.mv((rev_alpha_bar_sqrt.unsqueeze(-1) * rev_kernel_bar).transpose(0, 1), rev_one_minus_alpha_sqrt)) # [t, N]
             # print(f"t: {t}, info_weight: {self.info_weights[t][0]}, noise_weight: {noise_weights[t][0]}")
-        # import matplotlib.pyplot as plt
-        # print(torch.stack(noise_weights, dim=0).mean(dim=1).shape)
-        # plt.plot(torch.stack(noise_weights, dim=0).mean(dim=1).detach().cpu().numpy(), label=f"noise weight")
-        # plt.legend()
-        # plt.savefig("cos-beta3e-2.png")
-        # plt.show()
+        import matplotlib.pyplot as plt
+        noise_mean = torch.stack(noise_weights, dim=0).mean(dim=1).detach().cpu().numpy()
+        info_mean = (self.info_weights.mean(dim=1)*2).detach().cpu().numpy()
+        plt.figure(figsize=(8, 6))
+        plt.plot(noise_mean, label="sigma")
+        plt.plot(info_mean, label="gamma")
+        max_t = len(noise_mean) - 1
+        plt.annotate(f'sigma_T: {noise_mean[max_t]:.2f}', xy=(max_t, noise_mean[max_t]), xytext=(max_t, noise_mean[max_t] + 0.1),
+                    arrowprops=None)
+        plt.annotate(f'gamma_T: {info_mean[max_t]:.2f}', xy=(max_t, info_mean[max_t]), xytext=(max_t, info_mean[max_t] + 0.1),
+                    arrowprops=None)
+        plt.legend()
+        plt.savefig("scos2_weights.png")
+        plt.show()
         return torch.stack(noise_weights, dim=0) # [T, N] 
 
     def get_noise_weights_stats(self):
@@ -164,19 +172,24 @@ class SignalDiffusion(nn.Module):
         # Construct a mini-batch.
         # cond = cond.repeat((batch_size, 1, 1, 1, 1))
         # Generate degraded noise.
+        rx = cond[:, 0, 0].tolist()
+        positions = torch.tensor([map_positions[r] for r in rx])
+        d = torch.sqrt((positions**2).sum(dim=1))
+        c = torch.view_as_real(d.to(torch.complex64).to(device)).unsqueeze(1)
+
         data_dim = [batch_size, self.input_dim] + self.extra_dim + [2]
         noise = torch.randn(data_dim, dtype=torch.float32, device=device) # [B, N, S, A, 2]
         if self.task_id in [2,3]:
             inf_weight = (self.noise_weights[batch_max, :] + self.info_weights[batch_max, :]).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(device) # [B, N, 1, 1, 1]
         else:
-            inf_weight = (self.noise_weights[batch_max, :] + self.info_weights[batch_max, :]).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(device) # [B, N, 1, 1, 1]
+            inf_weight = (self.noise_weights[batch_max, :] + self.info_weights[batch_max, :]).unsqueeze(-1).unsqueeze(-1).to(device) # [B, N, 1, 1, 1]
         x_s = inf_weight * noise # [B, N, S, A, 2]
         # Restore data from noise.
         for s in range(self.max_step-1, -1, -1): # reverse from t to 0
-            x_0_hat = restore_fn(x_s, s*torch.ones(batch_size, dtype=torch.int64), cond) # resotre \hat{x_0} from x_s using trained tfdiff model
+            x_0_hat = restore_fn(x_s, s*torch.ones(batch_size, dtype=torch.int64), c) # resotre \hat{x_0} from x_s using trained tfdiff model
             if s > 0:
                 # x_{s-1} = D(\hat{x_0}, s-1)
-                x_s = self.degrade_fn(x_0_hat, t=(s-1)*torch.ones(batch_size, dtype=torch.int64), task_id = self.task_id) # degrade \hat{x_0} to x_{s-1}
+                x_s, c = self.degrade_fn(x_0_hat, c=cond, t=(s-1)*torch.ones(batch_size, dtype=torch.int64), task_id = self.task_id) # degrade \hat{x_0} to x_{s-1}
         return x_0_hat
     
     def robust_sampling(self, restore_fn, cond, device):

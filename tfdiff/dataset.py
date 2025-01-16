@@ -154,9 +154,9 @@ def from_path_inference(params):
     task_id = params.task_id
     if task_id == 0:
         dataset = WiFiDataset(cond_dir)
-        # num_samples = 500
-        # indices = np.random.choice(len(dataset), num_samples, replace=False)
-        # subset = torch.utils.data.Subset(dataset, indices)
+        num_samples = 100
+        indices = np.random.choice(len(dataset), num_samples, replace=False)
+        subset = torch.utils.data.Subset(dataset, indices)
     else:
         raise ValueError("Unexpected task_id.")
     return torch.utils.data.DataLoader(
