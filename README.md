@@ -1,1 +1,1 @@
-# RFD^2iffusion
+# Noise Schedule for RF-data and audio data
