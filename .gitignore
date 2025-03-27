@@ -40,7 +40,7 @@ diffwave/src/diffwave.egg-info
 
 # model checkpoint
 RFdiffusion/model/*/*/
-diffwave/ckpt/*/
+diffwave/ckpt/*/*/
 
 # Log files
 RFdiffusion/log/
@@ -53,3 +53,4 @@ diffwave/*.out
 *.bak
 *.swp
 *.swoexample_dir/
+
