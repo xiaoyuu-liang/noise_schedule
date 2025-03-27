@@ -52,5 +52,4 @@ diffwave/*.out
 # Other
 *.bak
 *.swp
-*.swoexample_dir/
-
+*.swo
