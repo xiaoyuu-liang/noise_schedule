@@ -57,9 +57,9 @@ def predict(spectrogram=None, model_dir=None, params=None, device=torch.device('
     beta = inference_noise_schedule
     alpha = 1 - beta
     alpha_cum = np.cumprod(alpha)
-    noise_level = torch.tensor(alpha_cum.astype(np.float32), device=device)
-    noise_scale = noise_level[0]
-    noise_scale_sqrt = noise_scale**0.5
+    # noise_level = torch.tensor(alpha_cum.astype(np.float32), device=device)
+    # noise_scale = noise_level[0]
+    # noise_scale_sqrt = noise_scale**0.5
 
     T = []
     for s in range(len(inference_noise_schedule)):
@@ -77,10 +77,11 @@ def predict(spectrogram=None, model_dir=None, params=None, device=torch.device('
       spectrogram = spectrogram.to(device)
       audio = torch.randn(spectrogram.shape[0], model.params.hop_samples * spectrogram.shape[-1], device=device)
     else:
-      spectrogram = spectrogram.to(device)
-      noise = torch.randn_like(spectrogram).to(device)
-      audio = noise_scale_sqrt * spectrogram + (1.0 - noise_scale)**0.5 * noise
+      # spectrogram = spectrogram.to(device)
+      # noise = torch.randn_like(spectrogram).to(device)
+      # audio = noise_scale_sqrt * spectrogram + (1.0 - noise_scale)**0.5 * noise
       spectrogram = None
+      audio = torch.randn(1, params.audio_len, device=device)
     # noise_scale = torch.from_numpy(alpha_cum**0.5).float().unsqueeze(1).to(device)
 
     for n in range(len(alpha) - 1, -1, -1):

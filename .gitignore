@@ -19,6 +19,7 @@ RFdiffusion/__pycache__/
 RFdiffusion/tfdiff/__pycache__/
 RFdiffusion/complex/__pycache__/
 diffwave/__pycache__/
+diffwave_uncon/__pycache__/
 
 
 # data files
@@ -41,6 +42,7 @@ diffwave/src/diffwave.egg-info
 # model checkpoint
 RFdiffusion/model/*/*/
 diffwave/ckpt/*/*/
+diffwave_uncon/exp/*
 
 # Log files
 RFdiffusion/log/
